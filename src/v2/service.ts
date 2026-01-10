@@ -170,6 +170,47 @@ export class RecallService {
   }
 
   /**
+   * Add Cursor as a source (auto-discovers agent transcripts + git repos)
+   * AGENT MODE ONLY - no more SQLite chat bullshit!
+   */
+  async addCursorSource(): Promise<{
+    transcriptSources: Source[];
+    gitSources: Source[];
+    workingDirs: string[];
+  }> {
+    const transcriptSources: Source[] = [];
+    const gitSources: Source[] = [];
+
+    const { discoverCursorTranscripts, discoverCursorWorkingDirs } = await import('./ingest/cursor.js');
+
+    // Discover and add transcript sources (AGENT MODE ONLY)
+    const transcripts = discoverCursorTranscripts();
+    for (const transcript of transcripts) {
+      const locator = `cursor-transcript://${transcript.id}`;
+      const source = this.registerSource(locator, 'cursor_transcript');
+      transcriptSources.push(source);
+    }
+
+    // Auto-discover git repos from Cursor working directories
+    const workingDirs = discoverCursorWorkingDirs();
+    for (const dir of workingDirs) {
+      if (isGitRepo(dir)) {
+        const existing = this.db.getSourceByLocator(dir, this.deviceId);
+        if (!existing) {
+          try {
+            const source = this.addGitSource(dir);
+            gitSources.push(source);
+          } catch (e) {
+            console.warn(`Failed to add git source for ${dir}: ${e}`);
+          }
+        }
+      }
+    }
+
+    return { transcriptSources, gitSources, workingDirs };
+  }
+
+  /**
    * Add git repository as a source
    */
   addGitSource(dir: string = process.cwd()): Source {
@@ -289,6 +330,10 @@ export class RecallService {
     
     if (source.kind === 'opencode_storage') {
       return this.ingestOpenCode(source);
+    }
+
+    if (source.kind === 'cursor_transcript') {
+      return this.ingestCursorTranscript(source);
     }
     
     if (source.kind === 'git') {
@@ -431,6 +476,92 @@ export class RecallService {
   }
 
   /**
+   * Ingest from Cursor agent transcript
+   */
+  private async ingestCursorTranscript(source: Source): Promise<IngestResult> {
+    const { discoverCursorTranscripts, ingestCursorTranscriptFile, normalizeCursorTranscript } = await import('./ingest/cursor.js');
+
+    // Extract transcript ID from locator (format: cursor-transcript://{id})
+    const idMatch = source.locator.match(/^cursor-transcript:\/\/(.+)$/);
+    if (!idMatch) {
+      return {
+        sourceId: source.source_id,
+        filePath: source.locator,
+        linesProcessed: 0,
+        eventsCreated: 0,
+        errors: ['Invalid Cursor transcript locator format'],
+      };
+    }
+
+    const id = idMatch[1];
+
+    // Find the transcript
+    const transcripts = discoverCursorTranscripts();
+    const transcript = transcripts.find(t => t.id === id);
+
+    if (!transcript) {
+      this.db.updateSourceStatus(source.source_id, 'missing');
+      return {
+        sourceId: source.source_id,
+        filePath: source.locator,
+        linesProcessed: 0,
+        eventsCreated: 0,
+        errors: ['Transcript not found'],
+      };
+    }
+
+    // Get cursor
+    const cursor = this.db.getCursor(source.source_id);
+
+    // Detect project from working directory
+    const projectInfo = transcript.workingDir ? detectProject(transcript.workingDir) : null;
+    const projectId = projectInfo?.project_id ?? `cursor-transcript-${id}`;
+
+    // Ensure project exists
+    if (projectInfo) {
+      this.db.getOrCreateProject({
+        ...projectInfo,
+        share_policy: 'private',
+      });
+    }
+
+    // Get events
+    const events = normalizeCursorTranscript(transcript, {
+      sourceId: source.source_id,
+      deviceId: this.deviceId,
+      projectId,
+      workingDir: transcript.workingDir,
+      redactSecrets: source.redact_secrets,
+    });
+
+    // Store events
+    if (events.length > 0) {
+      this.db.insertEvents(events);
+    }
+
+    // Create cursor
+    const newCursor = {
+      source_id: source.source_id,
+      file_mtime: transcript.mtime,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Update cursor
+    this.db.upsertCursor(newCursor);
+
+    // Update source status
+    this.db.updateSourceStatus(source.source_id, 'active');
+
+    return {
+      sourceId: source.source_id,
+      filePath: transcript.filePath,
+      linesProcessed: 0,
+      eventsCreated: events.length,
+      errors: [],
+    };
+  }
+
+  /**
    * Ingest from Git repository
    */
   private async ingestGit(source: Source): Promise<IngestResult> {
@@ -506,6 +637,7 @@ export class RecallService {
     if (this.config.autoDiscover) {
       this.addClaudeCodeSource();
       this.addOpenCodeSource();
+      this.addCursorSource();
     }
     
     // Start watching each source
@@ -537,6 +669,21 @@ export class RecallService {
         if (openCodeGitSources.length > 0) {
           console.log(`Auto-discovered ${openCodeGitSources.length} new git repo(s) from OpenCode`);
           for (const source of openCodeGitSources) {
+            this.watchSource(source);
+          }
+        }
+
+        // Re-discover Cursor sources (AGENT MODE ONLY)
+        const { transcriptSources, gitSources: cursorGitSources } = await this.addCursorSource();
+        if (transcriptSources.length > 0) {
+          console.log(`Auto-discovered ${transcriptSources.length} new Cursor agent transcript(s)`);
+          for (const source of transcriptSources) {
+            this.watchSource(source);
+          }
+        }
+        if (cursorGitSources.length > 0) {
+          console.log(`Auto-discovered ${cursorGitSources.length} new git repo(s) from Cursor`);
+          for (const source of cursorGitSources) {
             this.watchSource(source);
           }
         }

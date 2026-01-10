@@ -7,7 +7,7 @@
 // Event Types
 // ============================================================================
 
-export type SourceKind = 'claude_code_jsonl' | 'opencode_storage' | 'git';
+export type SourceKind = 'claude_code_jsonl' | 'opencode_storage' | 'cursor_transcript' | 'git';
 
 export type EventType =
   | 'user_message'

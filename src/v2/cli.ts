@@ -414,6 +414,34 @@ async function cmdSourcesAdd(service: RecallService, type: string, flags: Record
     const results = await service.ingestAll();
     const totalEvents = results.reduce((sum, r) => sum + r.eventsCreated, 0);
     console.log(`Ingested ${totalEvents} events.`);
+  } else if (type === 'cursor') {
+    const { transcriptSources, gitSources, workingDirs } = await service.addCursorSource();
+    
+    if (transcriptSources.length === 0) {
+      console.log('No Cursor agent transcripts found.');
+      console.log('Expected location: ~/.cursor/projects/');
+      console.log('(Only Cursor Agent mode is supported - no more chat SQLite bullshit!)');
+      return;
+    }
+    
+    console.log(`Added ${transcriptSources.length} Cursor agent transcript(s) 🔥`);
+    
+    // Show all discovered projects
+    if (workingDirs.length > 0) {
+      console.log(`\nDiscovered ${workingDirs.length} project(s) from agent transcripts:`);
+      const gitDirs = new Set(gitSources.map(s => s.locator));
+      for (const dir of workingDirs) {
+        const hasGit = gitDirs.has(dir);
+        const marker = hasGit ? '[git]' : '[no git]';
+        console.log(`  ${marker} ${dir}`);
+      }
+    }
+    
+    // Trigger initial ingestion
+    console.log('\nIngesting...');
+    const results = await service.ingestAll();
+    const totalEvents = results.reduce((sum, r) => sum + r.eventsCreated, 0);
+    console.log(`Ingested ${totalEvents} events.`);
   } else if (type === 'git') {
     const dir = flags.dir ? String(flags.dir) : process.cwd();
     
@@ -2051,6 +2079,8 @@ TIME FORMATS:
 
 EXAMPLES:
   recall sources add claude-code
+  recall sources add opencode
+  recall sources add cursor
   recall sources add git
   recall sources add git --dir ~/projects/myapp
   recall ingest

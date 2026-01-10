@@ -690,7 +690,7 @@ export class RecallService {
       } catch (e) {
         console.error(`Error re-discovering sources: ${e}`);
       }
-    }, 300000); // 5 minutes - rediscover new sessions periodically
+    }, 30000); // 30 seconds - rediscover new sessions periodically
   }
 
   /**
@@ -774,6 +774,34 @@ export class RecallService {
       // Initial ingest
       ingest();
       return; // Don't fall through to chokidar
+    } else if (source.kind === 'cursor_transcript') {
+      // Cursor transcripts: need to resolve file path from locator
+      // Locator format: cursor-transcript://{id}
+      const idMatch = source.locator.match(/^cursor-transcript:\/\/(.+)$/);
+      if (!idMatch) {
+        console.warn(`Invalid Cursor transcript locator: ${source.locator}`);
+        return;
+      }
+      
+      // Find the transcript file
+      const { discoverCursorTranscripts } = require('./ingest/cursor.js');
+      const transcripts = discoverCursorTranscripts();
+      const transcript = transcripts.find((t: any) => t.id === idMatch[1]);
+      
+      if (!transcript) {
+        console.warn(`Cursor transcript not found: ${idMatch[1]}`);
+        return;
+      }
+      
+      watchPath = transcript.filePath;
+      watchOptions = {
+        persistent: true,
+        ignoreInitial: false,
+        awaitWriteFinish: {
+          stabilityThreshold: 100,
+          pollInterval: 50,
+        },
+      };
     } else if (source.kind === 'git') {
       // Watch .git/logs/HEAD for commits and branch switches
       watchPath = join(source.locator, '.git', 'logs', 'HEAD');

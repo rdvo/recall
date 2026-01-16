@@ -10,6 +10,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "postbuild": "chmod +x dist/v2/cli.js dist/cli/index.js 2>/dev/null || true",
     "dev": "tsx watch src/v2/cli.ts",
     "start": "node dist/v2/cli.js",
     "recall": "tsx src/v2/cli.ts",

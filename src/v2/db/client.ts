@@ -1293,11 +1293,10 @@ export class RecallDB {
   // Stats
   // ============================================================================
 
-  // Cost per million tokens (USD) - updated Jan 2026
-  // https://docs.anthropic.com/en/docs/about-claude/pricing
-  // Cache read = 0.1× input, Cache write (5min) = 1.25× input
-  private static readonly MODEL_PRICING: Record<string, { input: number; output: number; cache_read: number; cache_write: number }> = {
+  private static readonly MODEL_PRICING_STANDARD: Record<string, { input: number; output: number; cache_read: number; cache_write: number }> = {
     // Anthropic (from official pricing page)
+    // https://docs.anthropic.com/en/docs/about-claude/pricing
+    // Cache read = 0.1× input, Cache write (5min) = 1.25× input
     'claude-opus-4-5': { input: 5, output: 25, cache_read: 0.50, cache_write: 6.25 },
     'claude-opus-4-1': { input: 15, output: 75, cache_read: 1.50, cache_write: 18.75 },
     'claude-opus-4': { input: 15, output: 75, cache_read: 1.50, cache_write: 18.75 },
@@ -1313,40 +1312,100 @@ export class RecallDB {
     'claude-3-opus': { input: 15, output: 75, cache_read: 1.50, cache_write: 18.75 },
     'claude-3-sonnet': { input: 3, output: 15, cache_read: 0.30, cache_write: 3.75 },
     'claude-3-haiku': { input: 0.25, output: 1.25, cache_read: 0.03, cache_write: 0.30 },
-    // OpenAI (estimated - cache pricing varies)
-    'gpt-4o': { input: 2.50, output: 10, cache_read: 1.25, cache_write: 2.50 },
+
+    // OpenAI (standard)
+    // https://platform.openai.com/docs/pricing
+    // OpenAI exposes "cached input" pricing; we map that to cache_read.
+    // OpenAI does not expose a separate "cache write" price; we treat cache_write as normal input.
+    'gpt-5.2': { input: 1.75, output: 14.00, cache_read: 0.175, cache_write: 1.75 },
+    'gpt-5.2-chat-latest': { input: 1.75, output: 14.00, cache_read: 0.175, cache_write: 1.75 },
+    'gpt-5.2-codex': { input: 1.75, output: 14.00, cache_read: 0.175, cache_write: 1.75 },
+
+    'gpt-5.1': { input: 1.25, output: 10.00, cache_read: 0.125, cache_write: 1.25 },
+    'gpt-5.1-chat-latest': { input: 1.25, output: 10.00, cache_read: 0.125, cache_write: 1.25 },
+    'gpt-5.1-codex': { input: 1.25, output: 10.00, cache_read: 0.125, cache_write: 1.25 },
+    'gpt-5.1-codex-max': { input: 1.25, output: 10.00, cache_read: 0.125, cache_write: 1.25 },
+
+    'gpt-5': { input: 1.25, output: 10.00, cache_read: 0.125, cache_write: 1.25 },
+    'gpt-5-chat-latest': { input: 1.25, output: 10.00, cache_read: 0.125, cache_write: 1.25 },
+    'gpt-5-codex': { input: 1.25, output: 10.00, cache_read: 0.125, cache_write: 1.25 },
+
+    'gpt-5-mini': { input: 0.25, output: 2.00, cache_read: 0.025, cache_write: 0.25 },
+    'gpt-5.1-codex-mini': { input: 0.25, output: 2.00, cache_read: 0.025, cache_write: 0.25 },
+
+    'gpt-5-nano': { input: 0.05, output: 0.40, cache_read: 0.005, cache_write: 0.05 },
+
+    'gpt-4o': { input: 2.50, output: 10.00, cache_read: 1.25, cache_write: 2.50 },
     'gpt-4o-mini': { input: 0.15, output: 0.60, cache_read: 0.075, cache_write: 0.15 },
-    'gpt-4-turbo': { input: 10, output: 30, cache_read: 5, cache_write: 10 },
-    'gpt-4': { input: 30, output: 60, cache_read: 15, cache_write: 30 },
-    'gpt-3.5-turbo': { input: 0.50, output: 1.50, cache_read: 0.25, cache_write: 0.50 },
-    'gpt-5': { input: 5, output: 20, cache_read: 2.50, cache_write: 5 },
-    'gpt-5.2': { input: 5, output: 20, cache_read: 2.50, cache_write: 5 },
-    'o1': { input: 15, output: 60, cache_read: 7.50, cache_write: 15 },
-    'o1-mini': { input: 3, output: 12, cache_read: 1.50, cache_write: 3 },
-    'o1-preview': { input: 15, output: 60, cache_read: 7.50, cache_write: 15 },
+
+    'gpt-4.1': { input: 2.00, output: 8.00, cache_read: 0.50, cache_write: 2.00 },
+    'gpt-4.1-mini': { input: 0.40, output: 1.60, cache_read: 0.10, cache_write: 0.40 },
+    'gpt-4.1-nano': { input: 0.10, output: 0.40, cache_read: 0.025, cache_write: 0.10 },
+
+    'o4-mini': { input: 1.10, output: 4.40, cache_read: 0.275, cache_write: 1.10 },
+    'o4-mini-deep-research': { input: 2.00, output: 8.00, cache_read: 0.50, cache_write: 2.00 },
+    'o3': { input: 2.00, output: 8.00, cache_read: 0.50, cache_write: 2.00 },
+    'o3-deep-research': { input: 10.00, output: 40.00, cache_read: 2.50, cache_write: 10.00 },
     'o3-mini': { input: 1.10, output: 4.40, cache_read: 0.55, cache_write: 1.10 },
-    // Other providers (estimated)
-    'minimax': { input: 0.50, output: 2, cache_read: 0.25, cache_write: 0.50 },
-    'glm': { input: 0.50, output: 2, cache_read: 0.25, cache_write: 0.50 },
-    // Default fallback (use sonnet pricing as conservative default)
-    'unknown': { input: 3, output: 15, cache_read: 0.30, cache_write: 3.75 },
+    'o1-mini': { input: 1.10, output: 4.40, cache_read: 0.55, cache_write: 1.10 },
+
+    'codex-mini-latest': { input: 1.50, output: 6.00, cache_read: 0.375, cache_write: 1.50 },
+
+    // No pricing / unknown model (skip cost)
+    'unknown': { input: 0, output: 0, cache_read: 0, cache_write: 0 },
   };
+
+  private static readonly MODEL_PRICING_PRIORITY: Record<string, { input: number; output: number; cache_read: number; cache_write: number }> = {
+    // OpenAI Priority processing tier
+    // https://platform.openai.com/docs/pricing
+    // Cached input is listed; cache_write is treated as normal input.
+    'gpt-5.2': { input: 3.50, output: 28.00, cache_read: 0.35, cache_write: 3.50 },
+    'gpt-5.2-codex': { input: 3.50, output: 28.00, cache_read: 0.35, cache_write: 3.50 },
+    'gpt-5.1': { input: 2.50, output: 20.00, cache_read: 0.25, cache_write: 2.50 },
+    'gpt-5.1-codex': { input: 2.50, output: 20.00, cache_read: 0.25, cache_write: 2.50 },
+    'gpt-5.1-codex-max': { input: 2.50, output: 20.00, cache_read: 0.25, cache_write: 2.50 },
+    'gpt-5': { input: 2.50, output: 20.00, cache_read: 0.25, cache_write: 2.50 },
+    'gpt-5-codex': { input: 2.50, output: 20.00, cache_read: 0.25, cache_write: 2.50 },
+    'gpt-5-mini': { input: 0.45, output: 3.60, cache_read: 0.045, cache_write: 0.45 },
+    'gpt-4.1': { input: 3.50, output: 14.00, cache_read: 0.875, cache_write: 3.50 },
+    'gpt-4.1-mini': { input: 0.70, output: 2.80, cache_read: 0.175, cache_write: 0.70 },
+    'gpt-4.1-nano': { input: 0.20, output: 0.80, cache_read: 0.05, cache_write: 0.20 },
+    'gpt-4o': { input: 4.25, output: 17.00, cache_read: 2.125, cache_write: 4.25 },
+    'gpt-4o-mini': { input: 0.25, output: 1.00, cache_read: 0.125, cache_write: 0.25 },
+    'o3': { input: 3.50, output: 14.00, cache_read: 0.875, cache_write: 3.50 },
+    'o4-mini': { input: 2.00, output: 8.00, cache_read: 0.50, cache_write: 2.00 },
+  };
+
+  private static getPricingTable(tier: 'standard' | 'priority'): Record<string, { input: number; output: number; cache_read: number; cache_write: number }> {
+    return tier === 'priority' ? RecallDB.MODEL_PRICING_PRIORITY : RecallDB.MODEL_PRICING_STANDARD;
+  }
+
 
   private calculateCost(
     tokens: { input: number; output: number; cache_read: number; cache_write: number },
-    model: string
-  ): number {
-    const pricing = RecallDB.MODEL_PRICING;
-    
-    // Normalize model name: lowercase, replace dots with dashes
+    model: string,
+    tier: 'standard' | 'priority' = 'standard'
+  ): number | null {
+    // Use the requested pricing tier when available.
+    // If a model isn't present in that tier's table (e.g. Claude under OpenAI Priority),
+    // fall back to standard pricing instead of returning $0.
+    let pricing = RecallDB.getPricingTable(tier);
+
+    // Normalize model name: lowercase, replace dots/underscores with dashes
     const normalizeModel = (m: string) => m.toLowerCase().replace(/\./g, '-').replace(/_/g, '-');
     const normalizedModel = normalizeModel(model);
-    
+
     // Direct match first
     let modelPricing = pricing[model] || pricing[normalizedModel];
-    
+
+    // Fallback to standard pricing if tier table doesn't include this model
+    if (!modelPricing && tier !== 'standard') {
+      pricing = RecallDB.getPricingTable('standard');
+      modelPricing = pricing[model] || pricing[normalizedModel];
+    }
+
     if (!modelPricing) {
-      // Try matching normalized keys
+      // Try matching normalized keys (handles dated versions like "gpt-4o-2024-08-06")
       for (const [key, value] of Object.entries(pricing)) {
         const normalizedKey = normalizeModel(key);
         if (normalizedModel.includes(normalizedKey) || normalizedKey.includes(normalizedModel)) {
@@ -1355,16 +1414,17 @@ export class RecallDB {
         }
       }
     }
-    
-    // Fallback to provider-based matching (e.g., "minimax-m2.1" -> "minimax")
+
+    // Provider-based fallback for unknown variants
     if (!modelPricing) {
-      if (normalizedModel.includes('minimax')) modelPricing = pricing['minimax'];
-      else if (normalizedModel.includes('glm')) modelPricing = pricing['glm'];
-      else if (normalizedModel.includes('claude')) modelPricing = pricing['claude-sonnet-4']; // default claude
-      else if (normalizedModel.includes('gpt')) modelPricing = pricing['gpt-4o']; // default openai
+      if (normalizedModel.includes('claude')) modelPricing = pricing['claude-sonnet-4'];
+      else if (normalizedModel.includes('gpt-5.2')) modelPricing = pricing['gpt-5.2'];
+      else if (normalizedModel.includes('gpt-4o-mini')) modelPricing = pricing['gpt-4o-mini'];
+      else if (normalizedModel.includes('gpt-4o')) modelPricing = pricing['gpt-4o'];
+      else if (normalizedModel.includes('gpt')) modelPricing = pricing['gpt-4o'];
     }
-    
-    if (!modelPricing) modelPricing = pricing['unknown'];
+
+    if (!modelPricing) return null;
 
     const cost =
       (tokens.input * modelPricing.input / 1_000_000) +
@@ -1399,6 +1459,7 @@ export class RecallDB {
     project_id?: string;
     session_id?: string;
     group_by?: 'day' | 'session' | 'model';
+    pricing_tier?: 'standard' | 'priority';
   }): {
     total: { input: number; output: number; cache_read: number; cache_write: number; cost_usd: number };
     by_day?: Record<string, { input: number; output: number; cache_read: number; cache_write: number; cost_usd: number }>;
@@ -1488,16 +1549,10 @@ export class RecallDB {
       const cache_write = tokens.cache_write || 0;
       const model = meta.model || 'unknown';
 
-      // For now, only Anthropic/Claude pricing is considered reliable.
-      // Skip token+cost aggregation for other models to avoid misleading totals.
-      const normalizedModel = String(model).toLowerCase();
-      const isPricedModel = normalizedModel.includes('claude');
-      if (!isPricedModel) {
-        continue;
-      }
-
-      // Calculate cost for this event/message
-      const eventCost = this.calculateCost({ input, output, cache_read, cache_write }, model);
+      // Calculate cost for this event/message.
+      // Cost may be null if the model isn't priced yet.
+      const tier = options?.pricing_tier || 'standard';
+      const eventCost = this.calculateCost({ input, output, cache_read, cache_write }, model, tier) ?? 0;
 
       // Total
       total.input += input;

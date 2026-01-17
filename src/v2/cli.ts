@@ -1457,12 +1457,19 @@ async function cmdStats(service: RecallService, flags: Record<string, string | b
   const since = flags.since ? parseRelativeTime(String(flags.since)) : parseRelativeTime('7 days ago');
   const until = flags.until ? parseRelativeTime(String(flags.until)) : undefined;
   
+  const tier = flags.tier ? String(flags.tier) : 'standard';
+  if (tier !== 'standard' && tier !== 'priority') {
+    console.error('Invalid --tier. Use: standard | priority');
+    process.exit(1);
+  }
+
   const stats = service.getTokenStats({
     since,
     until,
     project_id: flags.project ? String(flags.project) : undefined,
     session_id: flags.session ? String(flags.session) : undefined,
     group_by: flags['by-day'] ? 'day' : flags['by-session'] ? 'session' : flags['by-model'] ? 'model' : 'day',
+    pricing_tier: tier as 'standard' | 'priority',
   });
   
   // Format large numbers
@@ -2135,6 +2142,7 @@ COMMANDS:
     --until <time>             End time
     --project <id>             Filter by project
     --session <id>             Filter by session
+    --tier <tier>              Pricing tier: standard (default) | priority
     --by-day                   Group by day (default)
     --by-session               Group by session
     --by-model                 Group by model

@@ -1071,6 +1071,7 @@ export class RecallService {
     project_id?: string;
     session_id?: string;
     group_by?: 'day' | 'session' | 'model';
+    pricing_tier?: 'standard' | 'priority';
   }): {
     total: { input: number; output: number; cache_read: number; cache_write: number; cost_usd: number };
     by_day?: Record<string, { input: number; output: number; cache_read: number; cache_write: number; cost_usd: number }>;

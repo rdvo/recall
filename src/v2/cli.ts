@@ -1490,6 +1490,7 @@ async function cmdStats(service: RecallService, flags: Record<string, string | b
   console.log('TOTAL:');
   console.log(`  Input:       ${fmt(stats.total.input)}`);
   console.log(`  Output:      ${fmt(stats.total.output)}`);
+  console.log(`  Reasoning:   ${fmt((stats.total as any).reasoning || 0)}  (billed as output)`);
   console.log(`  Cache Read:  ${fmt(stats.total.cache_read)}`);
   console.log(`  Cache Write: ${fmt(stats.total.cache_write)}`);
   console.log(`  ─────────────────────`);

@@ -1461,10 +1461,11 @@ export class RecallDB {
     group_by?: 'day' | 'session' | 'model';
     pricing_tier?: 'standard' | 'priority';
   }): {
-    total: { input: number; output: number; cache_read: number; cache_write: number; cost_usd: number };
-    by_day?: Record<string, { input: number; output: number; cache_read: number; cache_write: number; cost_usd: number }>;
-    by_session?: Record<string, { input: number; output: number; cache_read: number; cache_write: number; cost_usd: number; model?: string }>;
-    by_model?: Record<string, { input: number; output: number; cache_read: number; cache_write: number; cost_usd: number }>;
+    // NOTE: reasoning tokens are billed as output tokens (OpenAI + Anthropic).
+    total: { input: number; output: number; reasoning: number; cache_read: number; cache_write: number; cost_usd: number };
+    by_day?: Record<string, { input: number; output: number; reasoning: number; cache_read: number; cache_write: number; cost_usd: number }>;
+    by_session?: Record<string, { input: number; output: number; reasoning: number; cache_read: number; cache_write: number; cost_usd: number; model?: string }>;
+    by_model?: Record<string, { input: number; output: number; reasoning: number; cache_read: number; cache_write: number; cost_usd: number }>;
   } {
     // Build WHERE clause
     // NOTE: OpenCode token data is message-level and may live on a tool_call or assistant_message event.
@@ -1510,10 +1511,13 @@ export class RecallDB {
     const rows = this.db.prepare(sql).all(...params) as any[];
 
     // Aggregate tokens
-    const total = { input: 0, output: 0, cache_read: 0, cache_write: 0, cost_usd: 0 };
-    const by_day: Record<string, { input: number; output: number; cache_read: number; cache_write: number; cost_usd: number }> = {};
-    const by_session: Record<string, { input: number; output: number; cache_read: number; cache_write: number; cost_usd: number; model?: string }> = {};
-    const by_model: Record<string, { input: number; output: number; cache_read: number; cache_write: number; cost_usd: number }> = {};
+    // NOTE: reasoning tokens are billed as output tokens; we:
+    // - keep a separate reasoning counter
+    // - include reasoning in output totals (so totals match billing)
+    const total = { input: 0, output: 0, reasoning: 0, cache_read: 0, cache_write: 0, cost_usd: 0 };
+    const by_day: Record<string, { input: number; output: number; reasoning: number; cache_read: number; cache_write: number; cost_usd: number }> = {};
+    const by_session: Record<string, { input: number; output: number; reasoning: number; cache_read: number; cache_write: number; cost_usd: number; model?: string }> = {};
+    const by_model: Record<string, { input: number; output: number; reasoning: number; cache_read: number; cache_write: number; cost_usd: number }> = {};
 
     const seenOpenCodeMessages = new Set<string>();
 
@@ -1545,27 +1549,32 @@ export class RecallDB {
 
       const input = tokens.input || 0;
       const output = tokens.output || 0;
+      const reasoning = tokens.reasoning || 0;
+      const billedOutput = output + reasoning;
       const cache_read = tokens.cache_read || 0;
       const cache_write = tokens.cache_write || 0;
       const model = meta.model || 'unknown';
 
       // Calculate cost for this event/message.
+      // Reasoning tokens are billed as output.
       // Cost may be null if the model isn't priced yet.
       const tier = options?.pricing_tier || 'standard';
-      const eventCost = this.calculateCost({ input, output, cache_read, cache_write }, model, tier) ?? 0;
+      const eventCost = this.calculateCost({ input, output: billedOutput, cache_read, cache_write }, model, tier) ?? 0;
 
       // Total
       total.input += input;
-      total.output += output;
+      total.output += billedOutput;
+      total.reasoning += reasoning;
       total.cache_read += cache_read;
       total.cache_write += cache_write;
       total.cost_usd += eventCost;
 
       // By day
       const day = row.event_ts.split('T')[0];
-      if (!by_day[day]) by_day[day] = { input: 0, output: 0, cache_read: 0, cache_write: 0, cost_usd: 0 };
+      if (!by_day[day]) by_day[day] = { input: 0, output: 0, reasoning: 0, cache_read: 0, cache_write: 0, cost_usd: 0 };
       by_day[day].input += input;
-      by_day[day].output += output;
+      by_day[day].output += billedOutput;
+      by_day[day].reasoning += reasoning;
       by_day[day].cache_read += cache_read;
       by_day[day].cache_write += cache_write;
       by_day[day].cost_usd += eventCost;
@@ -1573,10 +1582,11 @@ export class RecallDB {
       // By session
       if (row.session_id) {
         if (!by_session[row.session_id]) {
-          by_session[row.session_id] = { input: 0, output: 0, cache_read: 0, cache_write: 0, cost_usd: 0 };
+          by_session[row.session_id] = { input: 0, output: 0, reasoning: 0, cache_read: 0, cache_write: 0, cost_usd: 0 };
         }
         by_session[row.session_id].input += input;
-        by_session[row.session_id].output += output;
+        by_session[row.session_id].output += billedOutput;
+        by_session[row.session_id].reasoning += reasoning;
         by_session[row.session_id].cache_read += cache_read;
         by_session[row.session_id].cache_write += cache_write;
         by_session[row.session_id].cost_usd += eventCost;
@@ -1584,9 +1594,10 @@ export class RecallDB {
       }
 
       // By model
-      if (!by_model[model]) by_model[model] = { input: 0, output: 0, cache_read: 0, cache_write: 0, cost_usd: 0 };
+      if (!by_model[model]) by_model[model] = { input: 0, output: 0, reasoning: 0, cache_read: 0, cache_write: 0, cost_usd: 0 };
       by_model[model].input += input;
-      by_model[model].output += output;
+      by_model[model].output += billedOutput;
+      by_model[model].reasoning += reasoning;
       by_model[model].cache_read += cache_read;
       by_model[model].cache_write += cache_write;
       by_model[model].cost_usd += eventCost;

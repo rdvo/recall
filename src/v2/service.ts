@@ -1073,10 +1073,10 @@ export class RecallService {
     group_by?: 'day' | 'session' | 'model';
     pricing_tier?: 'standard' | 'priority';
   }): {
-    total: { input: number; output: number; cache_read: number; cache_write: number; cost_usd: number };
-    by_day?: Record<string, { input: number; output: number; cache_read: number; cache_write: number; cost_usd: number }>;
-    by_session?: Record<string, { input: number; output: number; cache_read: number; cache_write: number; cost_usd: number; model?: string }>;
-    by_model?: Record<string, { input: number; output: number; cache_read: number; cache_write: number; cost_usd: number }>;
+    total: { input: number; output: number; reasoning: number; cache_read: number; cache_write: number; cost_usd: number };
+    by_day?: Record<string, { input: number; output: number; reasoning: number; cache_read: number; cache_write: number; cost_usd: number }>;
+    by_session?: Record<string, { input: number; output: number; reasoning: number; cache_read: number; cache_write: number; cost_usd: number; model?: string }>;
+    by_model?: Record<string, { input: number; output: number; reasoning: number; cache_read: number; cache_write: number; cost_usd: number }>;
   } {
     return this.db.getTokenStats(options);
   }
